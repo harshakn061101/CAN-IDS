@@ -12,7 +12,7 @@ columns = [
     "flag"
 ]
 
-print("Loading datasets...")
+print("Loading dataset...")
 
 def load_dataset(filepath):
     df = pd.read_csv(filepath, header=None, names=columns)
@@ -23,22 +23,14 @@ def load_dataset(filepath):
     df["flag"] = df["flag"].map({"R": 0, "T": 1})
     return df
 
-dos   = load_dataset("data/DoS_dataset.csv")
-fuzzy = load_dataset("data/Fuzzy_dataset.csv")
-gear  = load_dataset("data/gear_dataset.csv")
-rpm   = load_dataset("data/RPM_dataset.csv")
-
-print(f"DoS:   {dos.shape}  attacks: {dos['flag'].sum()}")
-print(f"Fuzzy: {fuzzy.shape} attacks: {fuzzy['flag'].sum()}")
-print(f"Gear:  {gear.shape}  attacks: {gear['flag'].sum()}")
-print(f"RPM:   {rpm.shape}   attacks: {rpm['flag'].sum()}")
-
-df = pd.concat([dos, fuzzy, gear, rpm], ignore_index=True)
-print(f"\nCombined: {df.shape}")
+# Personal laptop: load DoS only to avoid memory error
+# Office laptop: load all four and concat
+df = load_dataset("data/DoS_dataset.csv")
+print(f"Shape: {df.shape}  attacks: {df['flag'].sum()}")
 
 df = df.sort_values("timestamp").reset_index(drop=True)
 
-print("\nComputing Feature 1: Rolling frequency...")
+print("Computing Feature 1: Rolling frequency...")
 
 def compute_rolling_frequency(df, window_seconds=0.1):
     freqs = np.zeros(len(df))
@@ -108,8 +100,6 @@ df["byte_dev"] = np.log1p(df["byte_dev"])
 print("\nFeature stats by flag (0=normal, 1=attack):")
 print(df.groupby("flag")[["freq", "inter_arrival", "byte_dev"]].mean())
 
-df.to_csv("data/combined_clean.csv", index=False)
-
 feature_cols = [
     "can_id", "dlc",
     "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7",
@@ -119,8 +109,6 @@ X = df[feature_cols].values
 y = df["flag"].values
 
 print(f"\nFeatures shape: {X.shape}")
-print(f"Total attacks:  {y.sum()}")
-print(f"Total normal:   {(y==0).sum()}")
 
 X_train_raw, X_test_raw, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
@@ -142,6 +130,4 @@ np.save("src/y_test.npy",  y_test)
 
 print(f"\nTrain shape: {X_train.shape}")
 print(f"Test shape:  {X_test.shape}")
-print(f"Train flag counts: {np.unique(y_train, return_counts=True)}")
-print(f"Test flag counts:  {np.unique(y_test, return_counts=True)}")
 print("All files saved to src/")
