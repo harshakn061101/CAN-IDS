@@ -11,4 +11,4 @@ src/id_stds.pkl
 src/error_distribution.png
 .env
 *.csv
-*.txt
+
