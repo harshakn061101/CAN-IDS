@@ -1,0 +1,14 @@
+﻿venv/
+__pycache__/
+*.pyc
+*.pth
+*.pkl
+*.npy
+data/
+src/scaler.pkl
+src/id_means.pkl
+src/id_stds.pkl
+src/error_distribution.png
+.env
+*.csv
+*.txt
