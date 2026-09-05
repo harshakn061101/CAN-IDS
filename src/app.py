@@ -1,14 +1,19 @@
 import numpy as np
 import torch
 import joblib
+import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List
 import sys
 import os
+from collections import deque
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'notebooks'))
 from model import LSTMAutoencoder
+
+from evidently.report import Report
+from evidently.metric_preset import DataDriftPreset
 
 app = FastAPI(title="CAN Intrusion Detection System")
 
@@ -16,6 +21,9 @@ WINDOW_SIZE       = 50
 FREQ_THRESHOLD    = 0.664978
 BYTEDEV_THRESHOLD = 0.85
 RECON_THRESHOLD   = 0.043970
+
+FEATURE_COLUMNS = ["can_id", "dlc", "d0","d1","d2","d3","d4","d5","d6","d7",
+                    "freq", "inter_arrival", "byte_dev"]
 
 scaler = joblib.load("src/scaler.pkl")
 
@@ -30,6 +38,19 @@ lstm_model.load_state_dict(
 )
 lstm_model.eval()
 print("Model and scaler loaded. Input size: 13 features.")
+
+# Load reference distribution (from training data) once at startup
+try:
+    reference_data = pd.read_csv("src/reference_data.csv")
+    print(f"Reference data loaded for drift monitoring: {reference_data.shape}")
+except FileNotFoundError:
+    reference_data = None
+    print("WARNING: src/reference_data.csv not found. /drift-report will be unavailable.")
+
+# Rolling buffer of recent production requests (last message of each /predict call)
+PRODUCTION_LOG_MAXLEN = 5000
+production_log = deque(maxlen=PRODUCTION_LOG_MAXLEN)
+
 
 class CANMessage(BaseModel):
     can_id:        int
@@ -92,6 +113,11 @@ def predict(sequence: CANSequence):
     elif freq_alert and bytedev_alert:
         attack_type = "Combined rate + content attack"
 
+    # Log ALL messages in this window for drift monitoring (not just the last one) —
+    # logging only the tail message starved the drift log to 1 sample per request,
+    # making the comparison unreliable at normal traffic volumes.
+    production_log.extend(arr_scaled.tolist())
+
     return {
         "prediction":           "ATTACK" if is_attack else "NORMAL",
         "is_attack":            is_attack,
@@ -107,4 +133,51 @@ def predict(sequence: CANSequence):
             "bytedev": BYTEDEV_THRESHOLD,
             "recon":   RECON_THRESHOLD
         }
+    }
+
+@app.get("/drift-report")
+def drift_report():
+    if reference_data is None:
+        return {"error": "Reference data not loaded. Cannot compute drift."}
+
+    if len(production_log) < 500:
+        return {
+            "status": "insufficient_data",
+            "message": f"Only {len(production_log)} data points logged so far. Need at least 500 to compute a reliable drift report.",
+            "requests_logged": len(production_log)
+        }
+
+    current_data = pd.DataFrame(list(production_log), columns=FEATURE_COLUMNS)
+
+    report = Report(metrics=[DataDriftPreset(stattest="psi", stattest_threshold=0.2)])
+    report.run(reference_data=reference_data, current_data=current_data)
+    result = report.as_dict()
+
+    # metrics[0] = DatasetDriftMetric (summary only)
+    # metrics[1] = DataDriftTable (has per-column drift_by_columns)
+    summary_metric = result["metrics"][0]["result"]
+    table_metric   = result["metrics"][1]["result"]
+
+    dataset_drift = summary_metric.get("dataset_drift", None)
+    drift_share = summary_metric.get("drift_share", None)
+    n_drifted = summary_metric.get("number_of_drifted_columns", None)
+    n_features = summary_metric.get("number_of_columns", None)
+
+    drifted_features = []
+    per_column = table_metric.get("drift_by_columns", {})
+    for col_name, col_result in per_column.items():
+        if col_result.get("drift_detected"):
+            drifted_features.append({
+                "feature": col_name,
+                "drift_score": round(float(col_result.get("drift_score", 0)), 6),
+                "test_used": col_result.get("stattest_name", "unknown")
+            })
+
+    return {
+        "requests_analyzed": len(production_log),
+        "dataset_drift_detected": dataset_drift,
+        "drift_share": drift_share,
+        "num_drifted_features": n_drifted,
+        "total_features": n_features,
+        "drifted_features": drifted_features
     }

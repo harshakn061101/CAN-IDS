@@ -12,3 +12,9 @@ src/error_distribution.png
 .env
 *.csv
 
+imp_keys.docx
+batch_test_payloads*.json
+health-check.json
+instance-config.json
+source-config.json
+trust-policy.json
