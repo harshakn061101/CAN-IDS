@@ -3,6 +3,7 @@ import torch
 import joblib
 import pandas as pd
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import sys
@@ -16,6 +17,17 @@ from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset
 
 app = FastAPI(title="CAN Intrusion Detection System")
+
+# Allow the browser-based frontend (opened as a local file, or hosted anywhere)
+# to call this API directly. Wide open (allow_origins=["*"]) is fine here since
+# /predict and /health don't expose secrets or perform side effects — this is a
+# read-only demo endpoint, not something that needs origin-restricted access.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 WINDOW_SIZE       = 50
 FREQ_THRESHOLD    = 0.664978
