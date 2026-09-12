@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import joblib
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
@@ -38,6 +38,8 @@ FEATURE_COLUMNS = ["can_id", "dlc", "d0","d1","d2","d3","d4","d5","d6","d7",
                     "freq", "inter_arrival", "byte_dev"]
 
 scaler = joblib.load("src/scaler.pkl")
+id_means = joblib.load("src/id_means.pkl")
+id_stds  = joblib.load("src/id_stds.pkl")
 
 lstm_model = LSTMAutoencoder(
     input_size=13,
@@ -144,6 +146,143 @@ def predict(sequence: CANSequence):
             "freq":    FREQ_THRESHOLD,
             "bytedev": BYTEDEV_THRESHOLD,
             "recon":   RECON_THRESHOLD
+        }
+    }
+
+MAX_EVAL_ROWS    = 200_000
+MAX_EVAL_WINDOWS = 20_000
+
+def _compute_rolling_frequency(df, window_seconds=0.1):
+    freqs = np.zeros(len(df))
+    timestamps = df["timestamp"].values
+    can_ids = df["can_id"].values
+    id_windows = {}
+    for i in range(len(df)):
+        cid = can_ids[i]
+        t = timestamps[i]
+        if cid not in id_windows:
+            id_windows[cid] = deque()
+        window = id_windows[cid]
+        window.append(t)
+        while window and (t - window[0]) > window_seconds:
+            window.popleft()
+        freqs[i] = len(window)
+    return freqs
+
+def _compute_inter_arrival(df):
+    inter_arrival = np.zeros(len(df))
+    timestamps = df["timestamp"].values
+    can_ids = df["can_id"].values
+    last_seen = {}
+    for i in range(len(df)):
+        cid = can_ids[i]
+        t = timestamps[i]
+        inter_arrival[i] = t - last_seen[cid] if cid in last_seen else 0.0
+        last_seen[cid] = t
+    return inter_arrival
+
+def _compute_metrics(y_pred, y_true):
+    TP = int(((y_pred == 1) & (y_true == 1)).sum())
+    FP = int(((y_pred == 1) & (y_true == 0)).sum())
+    FN = int(((y_pred == 0) & (y_true == 1)).sum())
+    TN = int(((y_pred == 0) & (y_true == 0)).sum())
+    precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
+    recall    = TP / (TP + FN) if (TP + FN) > 0 else 0.0
+    f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    return {
+        "precision": round(precision, 4), "recall": round(recall, 4), "f1": round(f1, 4),
+        "true_positives": TP, "false_positives": FP, "false_negatives": FN, "true_negatives": TN
+    }
+
+@app.post("/evaluate")
+async def evaluate_dataset(file: UploadFile = File(...)):
+    """
+    Accepts a raw CAN log CSV (same format as this project's original DoS_dataset.csv:
+    no header, columns = timestamp, can_id, dlc, d0..d7, flag — can_id/data bytes as hex
+    strings, flag as 'R' (normal) or 'T' (attack)). Runs the exact same feature engineering
+    the model was trained with, then scores every window against the model's fixed,
+    already-learned thresholds — this is a genuine re-run of the evaluation methodology
+    against whatever the caller uploads, not a simulation.
+    """
+    try:
+        df = pd.read_csv(
+            file.file, header=None,
+            names=["timestamp", "can_id", "dlc", "d0","d1","d2","d3","d4","d5","d6","d7", "flag"]
+        )
+    except Exception as e:
+        return {"error": f"Could not parse CSV: {e}"}
+
+    if len(df) > MAX_EVAL_ROWS:
+        return {"error": f"File has {len(df)} rows; the live evaluator caps at {MAX_EVAL_ROWS} rows to keep response times reasonable."}
+
+    df = df.dropna()
+    if len(df) < WINDOW_SIZE + 10:
+        return {"error": f"Need at least {WINDOW_SIZE + 10} valid rows after cleaning; got {len(df)}."}
+
+    hex_cols = ["can_id", "d0","d1","d2","d3","d4","d5","d6","d7"]
+    try:
+        for col in hex_cols:
+            df[col] = df[col].apply(lambda x: int(str(x).strip(), 16))
+    except Exception as e:
+        return {"error": f"Could not parse hex values in can_id/data byte columns: {e}. Expected the same raw format as this project's original DoS_dataset.csv."}
+
+    if not set(df["flag"].astype(str).str.strip().unique()).issubset({"R", "T"}):
+        return {"error": "flag column must contain only 'R' (normal) or 'T' (attack)."}
+    df["flag"] = df["flag"].astype(str).str.strip().map({"R": 0, "T": 1})
+
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    df["freq"] = np.log1p(_compute_rolling_frequency(df))
+    df["inter_arrival"] = np.log1p(_compute_inter_arrival(df) * 1000)
+
+    data_cols = ["d0","d1","d2","d3","d4","d5","d6","d7"]
+    df_means = df[["can_id"]].join(id_means.add_suffix("_mean"), on="can_id")
+    df_stds  = df[["can_id"]].join(id_stds.add_suffix("_std"),  on="can_id")
+    for col in data_cols:
+        df_means[col + "_mean"] = df_means[col + "_mean"].fillna(0)
+        df_stds[col + "_std"]   = df_stds[col + "_std"].fillna(1.0)
+    z_scores = pd.DataFrame()
+    for col in data_cols:
+        z_scores[col] = np.abs((df[col].values - df_means[col + "_mean"].values) / df_stds[col + "_std"].values)
+    df["byte_dev"] = np.log1p(z_scores.mean(axis=1))
+
+    X_raw = df[FEATURE_COLUMNS].values
+    y_true_all = df["flag"].values
+    X_scaled = scaler.transform(X_raw)
+
+    n_possible = len(X_scaled) - WINDOW_SIZE
+    if n_possible <= 0:
+        return {"error": "Not enough rows to build a single 50-message window."}
+
+    step = max(1, n_possible // MAX_EVAL_WINDOWS)
+    starts = list(range(0, n_possible, step))[:MAX_EVAL_WINDOWS]
+
+    X_windows     = np.array([X_scaled[s:s+WINDOW_SIZE] for s in starts])
+    y_windows     = np.array([y_true_all[s+WINDOW_SIZE-1] for s in starts])
+    last_freqs    = np.array([X_scaled[s+WINDOW_SIZE-1, 10] for s in starts])
+    last_bytedevs = np.array([X_scaled[s+WINDOW_SIZE-1, 12] for s in starts])
+
+    X_tensor = torch.FloatTensor(X_windows)
+    with torch.no_grad():
+        reconstructed = lstm_model(X_tensor)
+        errors = torch.mean((X_tensor - reconstructed) ** 2, dim=(1, 2)).numpy()
+
+    y_pred_recon    = (errors > RECON_THRESHOLD).astype(int)
+    y_pred_freq     = (last_freqs > FREQ_THRESHOLD).astype(int)
+    y_pred_bytedev  = (last_bytedevs > BYTEDEV_THRESHOLD).astype(int)
+    y_pred_combined = ((errors > RECON_THRESHOLD) | (last_freqs > FREQ_THRESHOLD) | (last_bytedevs > BYTEDEV_THRESHOLD)).astype(int)
+
+    return {
+        "rows_in_file":       len(df),
+        "windows_evaluated":  len(starts),
+        "normal_windows":     int((y_windows == 0).sum()),
+        "attack_windows":     int((y_windows == 1).sum()),
+        "thresholds": {"freq": FREQ_THRESHOLD, "bytedev": BYTEDEV_THRESHOLD, "recon": RECON_THRESHOLD},
+        "strategies": {
+            "reconstruction_error": _compute_metrics(y_pred_recon, y_windows),
+            "frequency":            _compute_metrics(y_pred_freq, y_windows),
+            "byte_deviation":       _compute_metrics(y_pred_bytedev, y_windows),
+            "combined":             _compute_metrics(y_pred_combined, y_windows),
         }
     }
 

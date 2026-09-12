@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAN-IDS — Live Intrusion Detection Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #12151A;
+    --panel: #1A1F27;
+    --panel-2: #20262F;
+    --border: #2A313C;
+    --border-soft: #232A33;
+    --text: #E7EAEE;
+    --text-dim: #8B93A1;
+    --text-faint: #5B6472;
+    --amber: #F0B429;
+    --amber-dim: #8A691E;
+    --teal: #45B892;
+    --teal-dim: #2A5F4C;
+    --red: #E5484D;
+    --red-dim: #7A2E30;
+    --focus: #6FA8DC;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100vh;
+    padding: 32px 24px 64px;
+  }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  a { color: var(--teal); }
+  a:hover { color: #5FD4A8; }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+
+  .brand-mark {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .header-links {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 18px;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 14.5px;
+    line-height: 1.6;
+    max-width: 62ch;
+    margin: 0 0 32px;
+  }
+
+  /* ---------- Console grid ---------- */
+  .console {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (max-width: 720px) {
+    .console { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+
+  .panel-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    margin: 0 0 16px;
+    letter-spacing: 0.03em;
+  }
+
+  /* ---------- Status panel ---------- */
+  .status-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    justify-content: center;
+    min-height: 240px;
+  }
+
+  .status-light {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: var(--panel-2);
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+    transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+  }
+
+  .status-light svg { width: 32px; height: 32px; }
+
+  .status-light.idle { border-color: var(--border); }
+  .status-light.running {
+    border-color: var(--focus);
+    animation: pulse 1.1s ease-in-out infinite;
+  }
+  .status-light.normal {
+    background: rgba(69, 184, 146, 0.12);
+    border-color: var(--teal);
+    box-shadow: 0 0 0 6px rgba(69, 184, 146, 0.08);
+  }
+  .status-light.attack {
+    background: rgba(229, 72, 77, 0.12);
+    border-color: var(--red);
+    box-shadow: 0 0 0 6px rgba(229, 72, 77, 0.1);
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(111, 168, 220, 0.35); }
+    50% { box-shadow: 0 0 0 8px rgba(111, 168, 220, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status-light.running { animation: none; }
+  }
+
+  .status-word {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin-bottom: 6px;
+  }
+  .status-word.normal { color: var(--teal); }
+  .status-word.attack { color: var(--red); }
+  .status-word.idle, .status-word.running { color: var(--text-dim); }
+
+  .status-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ---------- Control panel ---------- */
+  .control-panel { display: flex; flex-direction: column; }
+
+  .scenario-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .chip {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 13px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .chip:hover { border-color: var(--text-dim); color: var(--text); }
+  .chip.active {
+    border-color: var(--focus);
+    color: var(--text);
+    background: rgba(111, 168, 220, 0.08);
+  }
+
+  .run-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: auto;
+    padding-top: 16px;
+  }
+
+  .btn-run {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--teal);
+    color: #0C1712;
+    border: none;
+    padding: 11px 22px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+  .btn-run:hover:not(:disabled) { background: #5FD4A8; }
+  .btn-run:disabled { background: var(--panel-2); color: var(--text-faint); cursor: not-allowed; }
+
+  .run-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  .api-note {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+
+  .error-box {
+    display: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--red);
+    background: rgba(229, 72, 77, 0.08);
+    border: 1px solid var(--red-dim);
+    border-radius: 3px;
+    padding: 10px 12px;
+    margin-top: 14px;
+    line-height: 1.5;
+  }
+
+  /* ---------- Signal breakdown ---------- */
+  .signals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (max-width: 620px) {
+    .signals { grid-template-columns: 1fr; }
+  }
+
+  .signal-card { padding: 18px 20px; }
+
+  .signal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+  }
+
+  .signal-name {
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  .signal-flag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    color: var(--text-faint);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .signal-flag.on { color: var(--red); border-color: var(--red-dim); background: rgba(229,72,77,0.1); }
+  .signal-flag.off { color: var(--teal); border-color: var(--teal-dim); background: rgba(69,184,146,0.08); }
+
+  .signal-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 19px;
+    margin-bottom: 10px;
+  }
+
+  .bar-track {
+    height: 6px;
+    background: var(--panel-2);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--teal);
+    transition: width 0.5s ease, background-color 0.3s ease;
+    width: 0%;
+  }
+  .bar-fill.exceeded { background: var(--red); }
+
+  .signal-threshold {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+
+  /* ---------- Sequence preview ---------- */
+  .preview-panel { padding: 0; overflow: hidden; }
+
+  /* ---------- Evaluate dataset panel ---------- */
+  .eval-panel { margin-top: 16px; }
+
+  .eval-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    max-width: 74ch;
+    margin: 0 0 16px;
+  }
+
+  .eval-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .file-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .file-label:hover { border-color: var(--text-dim); color: var(--text); }
+  .file-label.has-file { border-color: var(--focus); color: var(--text); }
+
+  .eval-results { margin-top: 18px; }
+
+  .eval-summary {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+
+  .eval-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .eval-table th {
+    text-align: left;
+    color: var(--text-faint);
+    font-weight: 500;
+    font-size: 11.5px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .eval-table td {
+    padding: 9px 12px;
+    color: var(--text);
+    border-bottom: 1px solid var(--border-soft);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .eval-table td:first-child { color: var(--text-dim); font-family: 'IBM Plex Sans', sans-serif; }
+  .preview-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px 0;
+  }
+
+  .preview-toggle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 5px 10px;
+    cursor: pointer;
+  }
+  .preview-toggle:hover { color: var(--text); border-color: var(--text-dim); }
+
+  .table-scroll {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .table-scroll.open { max-height: 320px; overflow-y: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    margin-top: 14px;
+  }
+
+  th {
+    text-align: left;
+    color: var(--text-faint);
+    font-weight: 400;
+    padding: 6px 14px;
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+
+  td {
+    padding: 5px 14px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+  }
+
+  tr:hover td { color: var(--text); background: var(--panel-2); }
+
+  /* ---------- Footer ---------- */
+  footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-soft);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-mark mono">CAN-IDS</span>
+      <h1>Live Intrusion Detection Console</h1>
+    </div>
+    <div class="header-links">
+      <a href="https://github.com/harshakn061101/CAN-IDS" target="_blank" rel="noopener">source</a>
+      <a href="#" id="api-link" target="_blank" rel="noopener">api</a>
+    </div>
+  </header>
+
+  <p class="subtitle">
+    An LSTM autoencoder trained on normal CAN bus traffic, deployed live on AWS.
+    Load a traffic sample below and run it through the deployed model — detection
+    happens by calling the real <span class="mono">/predict</span> endpoint, not a simulation.
+  </p>
+
+  <div class="console">
+
+    <div class="panel status-panel">
+      <div class="status-light idle" id="statusLight">
+        <svg viewBox="0 0 24 24" fill="none" id="statusIcon">
+          <path d="M12 3v6M12 15v6M3 12h6M15 12h6" stroke="#5B6472" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="status-word idle" id="statusWord">Awaiting input</div>
+      <div class="status-sub" id="statusSub">Load a sample and run detection.</div>
+    </div>
+
+    <div class="panel control-panel">
+      <p class="panel-label">Traffic sample — 50-message window</p>
+      <div class="scenario-row">
+        <button class="chip active" data-scenario="normal">Normal traffic</button>
+        <button class="chip" data-scenario="dos">DoS-style flood</button>
+        <button class="chip" data-scenario="spoof">Byte spoofing</button>
+      </div>
+      <p class="api-note">
+        "Normal traffic" and "DoS-style flood" are real 50-message windows pulled directly
+        from the trained model's test dataset. "Byte spoofing" is a synthetic illustration —
+        this project's dataset only contains DoS attacks, which don't naturally exercise
+        the byte-deviation signal.
+      </p>
+      <div class="run-row">
+        <button class="btn-run" id="runBtn">Run detection</button>
+        <span class="run-meta" id="runMeta"></span>
+      </div>
+      <div class="error-box" id="errorBox"></div>
+    </div>
+
+  </div>
+
+  <div class="signals">
+    <div class="panel signal-card">
+      <div class="signal-head">
+        <span class="signal-name">Reconstruction error</span>
+        <span class="signal-flag" id="reconFlag">—</span>
+      </div>
+      <div class="signal-value mono" id="reconValue">—</div>
+      <div class="bar-track"><div class="bar-fill" id="reconBar"></div></div>
+      <div class="signal-threshold" id="reconThresh">threshold —</div>
+    </div>
+
+    <div class="panel signal-card">
+      <div class="signal-head">
+        <span class="signal-name">Frequency</span>
+        <span class="signal-flag" id="freqFlag">—</span>
+      </div>
+      <div class="signal-value mono" id="freqValue">—</div>
+      <div class="bar-track"><div class="bar-fill" id="freqBar"></div></div>
+      <div class="signal-threshold" id="freqThresh">threshold —</div>
+    </div>
+
+    <div class="panel signal-card">
+      <div class="signal-head">
+        <span class="signal-name">Byte deviation</span>
+        <span class="signal-flag" id="bytedevFlag">—</span>
+      </div>
+      <div class="signal-value mono" id="bytedevValue">—</div>
+      <div class="bar-track"><div class="bar-fill" id="bytedevBar"></div></div>
+      <div class="signal-threshold" id="bytedevThresh">threshold —</div>
+    </div>
+  </div>
+
+  <div class="panel preview-panel">
+    <div class="preview-head">
+      <p class="panel-label" style="margin:0;">Sequence preview</p>
+      <button class="preview-toggle" id="previewToggle">Show 50 messages</button>
+    </div>
+    <div class="table-scroll" id="tableScroll">
+      <table>
+        <thead>
+          <tr><th>#</th><th>CAN ID</th><th>DLC</th><th>Data bytes</th><th>Freq</th><th>Byte dev</th></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel eval-panel">
+    <p class="panel-label" style="margin-bottom:6px;">Evaluate your own dataset</p>
+    <p class="eval-desc">
+      Upload a raw CAN log CSV — no header row, columns in order:
+      <span class="mono">timestamp, can_id, dlc, d0, d1, d2, d3, d4, d5, d6, d7, flag</span>
+      — CAN ID and data bytes as hex strings, flag as <span class="mono">R</span> (normal)
+      or <span class="mono">T</span> (attack), same layout as the DoS_dataset.csv this model
+      was trained on. The full feature-engineering pipeline runs live, then every window is
+      scored against the model's already-learned thresholds — a genuine re-evaluation, not
+      a canned result.
+    </p>
+    <div class="eval-controls">
+      <label class="file-label" for="csvFile">
+        <span id="fileLabelText">Choose CSV file</span>
+      </label>
+      <input type="file" id="csvFile" accept=".csv" hidden>
+      <button class="btn-run" id="evalBtn" disabled>Evaluate</button>
+      <span class="run-meta" id="evalMeta"></span>
+    </div>
+    <div class="error-box" id="evalErrorBox"></div>
+    <div class="eval-results" id="evalResults"></div>
+  </div>
+
+  <footer>
+    <span>Model: LSTM autoencoder · 13 features · window 50</span>
+    <span id="footerStatus">API not yet contacted</span>
+  </footer>
+
+</div>
+
+<script>
+  const API_BASE = "https://2e3mrrxw9n.ap-south-1.awsapprunner.com";
+  document.getElementById('api-link').href = API_BASE + "/docs";
+
+  // ---------- Real data extracted from the actual DoS_dataset test set ----------
+  // "normal" and "dos" are genuine 50-message windows pulled from X_test.npy / y_test.npy,
+  // inverse-transformed back to raw values. "spoof" remains synthetic — this dataset only
+  // ever loaded DoS attacks, which are purely rate-based; zero real rows in it trigger the
+  // byte-deviation signal, so no genuine content-spoofing example exists to draw from here.
+  const REAL_NORMAL = [{"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 6, "d6": 3, "d7": 152, "freq": 2.484907, "inter_arrival": 2.305567, "byte_dev": 0.187841}, {"can_id": 1264, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 128, "d4": 0, "d5": 105, "d6": 209, "d7": 19, "freq": 1.94591, "inter_arrival": 3.044329, "byte_dev": 0.0}, {"can_id": 672, "dlc": 8, "d0": 4, "d1": 0, "d2": 154, "d3": 29, "d4": 151, "d5": 2, "d6": 189, "d7": 0, "freq": 2.397895, "inter_arrival": 2.405602, "byte_dev": 0.190782}, {"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 4, "d6": 9, "d7": 210, "freq": 2.397895, "inter_arrival": 2.305163, "byte_dev": 0.193458}, {"can_id": 608, "dlc": 8, "d0": 27, "d1": 35, "d2": 35, "d3": 48, "d4": 8, "d5": 142, "d6": 108, "d7": 20, "freq": 2.397895, "inter_arrival": 2.403061, "byte_dev": 0.592657}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 89, "d2": 0, "d3": 0, "d4": 0, "d5": 65, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.415895, "byte_dev": 0.169542}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 165, "d6": 9, "d7": 0, "freq": 2.484907, "inter_arrival": 2.326898, "byte_dev": 0.203666}, {"can_id": 790, "dlc": 8, "d0": 5, "d1": 33, "d2": 108, "d3": 9, "d4": 33, "d5": 33, "d6": 0, "d7": 111, "freq": 2.484907, "inter_arrival": 2.287385, "byte_dev": 0.417026}, {"can_id": 608, "dlc": 8, "d0": 25, "d1": 34, "d2": 34, "d3": 48, "d4": 8, "d5": 142, "d6": 112, "d7": 55, "freq": 2.484907, "inter_arrival": 2.389121, "byte_dev": 0.325946}, {"can_id": 809, "dlc": 8, "d0": 220, "d1": 189, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 1.791759, "inter_arrival": 2.56763, "byte_dev": 0.252448}, {"can_id": 790, "dlc": 8, "d0": 5, "d1": 33, "d2": 108, "d3": 9, "d4": 33, "d5": 33, "d6": 0, "d7": 110, "freq": 2.397895, "inter_arrival": 2.411264, "byte_dev": 0.493092}, {"can_id": 1264, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 128, "d4": 0, "d5": 105, "d6": 209, "d7": 19, "freq": 1.791759, "inter_arrival": 3.038075, "byte_dev": 0.0}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 145, "d6": 9, "d7": 0, "freq": 2.484907, "inter_arrival": 2.759622, "byte_dev": 0.258982}, {"can_id": 809, "dlc": 8, "d0": 134, "d1": 187, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 2.484907, "inter_arrival": 2.394877, "byte_dev": 0.076424}, {"can_id": 304, "dlc": 8, "d0": 15, "d1": 128, "d2": 0, "d3": 255, "d4": 27, "d5": 128, "d6": 5, "d7": 104, "freq": 2.484907, "inter_arrival": 2.203761, "byte_dev": 0.265923}, {"can_id": 880, "dlc": 8, "d0": 0, "d1": 32, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.408201, "byte_dev": 0.0}, {"can_id": 305, "dlc": 8, "d0": 0, "d1": 128, "d2": 0, "d3": 0, "d4": 71, "d5": 127, "d6": 10, "d7": 26, "freq": 2.397895, "inter_arrival": 2.484482, "byte_dev": 0.448713}, {"can_id": 1087, "dlc": 8, "d0": 0, "d1": 64, "d2": 96, "d3": 255, "d4": 126, "d5": 196, "d6": 8, "d7": 0, "freq": 1.386294, "inter_arrival": 3.708727, "byte_dev": 0.135555}, {"can_id": 339, "dlc": 8, "d0": 0, "d1": 33, "d2": 16, "d3": 255, "d4": 0, "d5": 255, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.557371, "byte_dev": 0.0}, {"can_id": 1087, "dlc": 8, "d0": 0, "d1": 64, "d2": 96, "d3": 255, "d4": 126, "d5": 217, "d6": 8, "d7": 0, "freq": 2.397895, "inter_arrival": 2.396072, "byte_dev": 0.197583}, {"can_id": 497, "dlc": 8, "d0": 8, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.94591, "inter_arrival": 3.04476, "byte_dev": 0.0}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.412055, "byte_dev": 0.0}, {"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 6, "d6": 11, "d7": 112, "freq": 2.484907, "inter_arrival": 2.223953, "byte_dev": 0.152432}, {"can_id": 809, "dlc": 8, "d0": 64, "d1": 190, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 2.484907, "inter_arrival": 2.378438, "byte_dev": 0.192036}, {"can_id": 672, "dlc": 8, "d0": 100, "d1": 0, "d2": 154, "d3": 29, "d4": 151, "d5": 2, "d6": 189, "d7": 0, "freq": 2.484907, "inter_arrival": 2.409102, "byte_dev": 0.191018}, {"can_id": 848, "dlc": 8, "d0": 5, "d1": 32, "d2": 52, "d3": 104, "d4": 119, "d5": 0, "d6": 0, "d7": 14, "freq": 2.484907, "inter_arrival": 2.401788, "byte_dev": 0.360589}, {"can_id": 880, "dlc": 8, "d0": 0, "d1": 32, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.461725, "byte_dev": 0.0}, {"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 6, "d6": 9, "d7": 74, "freq": 2.484907, "inter_arrival": 2.304568, "byte_dev": 0.161033}, {"can_id": 1072, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.791759, "inter_arrival": 3.044419, "byte_dev": 0.0}, {"can_id": 304, "dlc": 8, "d0": 29, "d1": 128, "d2": 0, "d3": 255, "d4": 14, "d5": 128, "d6": 0, "d7": 147, "freq": 2.397895, "inter_arrival": 2.484582, "byte_dev": 0.4125}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 218, "d6": 8, "d7": 0, "freq": 2.484907, "inter_arrival": 2.397266, "byte_dev": 0.196152}, {"can_id": 160, "dlc": 8, "d0": 97, "d1": 135, "d2": 112, "d3": 9, "d4": 0, "d5": 31, "d6": 2, "d7": 0, "freq": 1.098612, "inter_arrival": 4.606399, "byte_dev": 0.514768}, {"can_id": 305, "dlc": 8, "d0": 233, "d1": 127, "d2": 0, "d3": 0, "d4": 58, "d5": 127, "d6": 4, "d7": 231, "freq": 2.397895, "inter_arrival": 2.485158, "byte_dev": 0.434477}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.197225, "inter_arrival": 3.439134, "byte_dev": 0.0}, {"can_id": 809, "dlc": 8, "d0": 64, "d1": 182, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 2.484907, "inter_arrival": 2.392701, "byte_dev": 0.188801}, {"can_id": 320, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 8, "d5": 40, "d6": 40, "d7": 70, "freq": 2.397895, "inter_arrival": 2.495532, "byte_dev": 0.257466}, {"can_id": 848, "dlc": 8, "d0": 5, "d1": 32, "d2": 20, "d3": 104, "d4": 117, "d5": 0, "d6": 0, "d7": 44, "freq": 2.079442, "inter_arrival": 2.245463, "byte_dev": 0.324234}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.397157, "byte_dev": 0.0}, {"can_id": 305, "dlc": 8, "d0": 41, "d1": 128, "d2": 0, "d3": 0, "d4": 83, "d5": 127, "d6": 2, "d7": 12, "freq": 2.484907, "inter_arrival": 2.555818, "byte_dev": 0.535576}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 91, "d2": 0, "d3": 0, "d4": 0, "d5": 62, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.335932, "byte_dev": 0.071769}, {"can_id": 304, "dlc": 8, "d0": 25, "d1": 128, "d2": 0, "d3": 255, "d4": 13, "d5": 128, "d6": 7, "d7": 37, "freq": 2.484907, "inter_arrival": 2.203761, "byte_dev": 0.326487}, {"can_id": 304, "dlc": 8, "d0": 16, "d1": 128, "d2": 0, "d3": 255, "d4": 244, "d5": 127, "d6": 8, "d7": 91, "freq": 2.302585, "inter_arrival": 2.484979, "byte_dev": 0.539642}, {"can_id": 608, "dlc": 8, "d0": 25, "d1": 33, "d2": 33, "d3": 48, "d4": 8, "d5": 143, "d6": 107, "d7": 43, "freq": 2.484907, "inter_arrival": 2.382694, "byte_dev": 0.485318}, {"can_id": 1072, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.94591, "inter_arrival": 3.037217, "byte_dev": 0.0}, {"can_id": 305, "dlc": 8, "d0": 14, "d1": 128, "d2": 0, "d3": 0, "d4": 63, "d5": 127, "d6": 0, "d7": 141, "freq": 2.397895, "inter_arrival": 2.474515, "byte_dev": 0.394401}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.34621, "byte_dev": 0.0}, {"can_id": 880, "dlc": 8, "d0": 0, "d1": 32, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.396159, "byte_dev": 0.0}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 94, "d2": 0, "d3": 0, "d4": 0, "d5": 60, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.421541, "byte_dev": 0.258097}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 89, "d2": 0, "d3": 0, "d4": 0, "d5": 65, "d6": 0, "d7": 0, "freq": 1.386294, "inter_arrival": 2.405237, "byte_dev": 0.169542}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 148, "d6": 9, "d7": 0, "freq": 2.484907, "inter_arrival": 2.397179, "byte_dev": 0.250877}];
+  const REAL_DOS = [{"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 3.637586, "inter_arrival": 0.399542, "byte_dev": 0.0}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 4.343805, "inter_arrival": 0.406235, "byte_dev": 0.0}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 3.828641, "inter_arrival": 0.402097, "byte_dev": 0.0}, {"can_id": 880, "dlc": 8, "d0": 0, "d1": 32, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.398176, "byte_dev": 0.0}, {"can_id": 304, "dlc": 8, "d0": 21, "d1": 128, "d2": 0, "d3": 255, "d4": 13, "d5": 128, "d6": 2, "d7": 247, "freq": 1.098612, "inter_arrival": 3.53293, "byte_dev": 0.414259}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 135, "d6": 9, "d7": 0, "freq": 2.484907, "inter_arrival": 2.399172, "byte_dev": 0.285534}, {"can_id": 304, "dlc": 8, "d0": 15, "d1": 128, "d2": 0, "d3": 255, "d4": 22, "d5": 128, "d6": 13, "d7": 5, "freq": 2.397895, "inter_arrival": 2.303997, "byte_dev": 0.445766}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 4.624973, "inter_arrival": 0.400022, "byte_dev": 0.0}, {"can_id": 608, "dlc": 8, "d0": 26, "d1": 35, "d2": 35, "d3": 48, "d4": 8, "d5": 142, "d6": 107, "d7": 39, "freq": 2.484907, "inter_arrival": 2.318463, "byte_dev": 0.523554}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 91, "d2": 0, "d3": 0, "d4": 0, "d5": 60, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.390061, "byte_dev": 0.150988}, {"can_id": 1264, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 128, "d4": 0, "d5": 105, "d6": 209, "d7": 19, "freq": 1.386294, "inter_arrival": 3.088086, "byte_dev": 0.0}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.396897, "byte_dev": 0.0}, {"can_id": 672, "dlc": 8, "d0": 36, "d1": 0, "d2": 155, "d3": 29, "d4": 151, "d5": 2, "d6": 189, "d7": 0, "freq": 2.397895, "inter_arrival": 2.402867, "byte_dev": 0.352285}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 141, "d6": 9, "d7": 0, "freq": 2.397895, "inter_arrival": 2.459506, "byte_dev": 0.269688}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.833213, "inter_arrival": 1.862047, "byte_dev": 0.0}, {"can_id": 608, "dlc": 8, "d0": 24, "d1": 33, "d2": 34, "d3": 48, "d4": 8, "d5": 143, "d6": 116, "d7": 1, "freq": 2.484907, "inter_arrival": 2.329594, "byte_dev": 0.612581}, {"can_id": 304, "dlc": 8, "d0": 21, "d1": 128, "d2": 0, "d3": 255, "d4": 65, "d5": 128, "d6": 14, "d7": 1, "freq": 2.397895, "inter_arrival": 2.485734, "byte_dev": 0.395618}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 88, "d2": 0, "d3": 0, "d4": 0, "d5": 65, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.384629, "byte_dev": 0.205867}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.396702, "byte_dev": 0.0}, {"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 6, "d6": 9, "d7": 74, "freq": 2.484907, "inter_arrival": 2.281655, "byte_dev": 0.161033}, {"can_id": 1349, "dlc": 8, "d0": 216, "d1": 0, "d2": 0, "d3": 137, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.098612, "inter_arrival": 4.596704, "byte_dev": 0.117953}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 3.332205, "inter_arrival": 0.404805, "byte_dev": 0.0}, {"can_id": 880, "dlc": 8, "d0": 0, "d1": 32, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.398978, "byte_dev": 0.0}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 87, "d2": 0, "d3": 0, "d4": 0, "d5": 60, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.382694, "byte_dev": 0.186428}, {"can_id": 320, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 18, "d5": 51, "d6": 43, "d7": 76, "freq": 2.302585, "inter_arrival": 3.045815, "byte_dev": 0.381428}, {"can_id": 2, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 15, "d7": 177, "freq": 2.484907, "inter_arrival": 2.259575, "byte_dev": 0.387257}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 4.394449, "inter_arrival": 0.402735, "byte_dev": 0.0}, {"can_id": 608, "dlc": 8, "d0": 25, "d1": 33, "d2": 34, "d3": 48, "d4": 8, "d5": 143, "d6": 108, "d7": 41, "freq": 2.484907, "inter_arrival": 2.374341, "byte_dev": 0.362844}, {"can_id": 161, "dlc": 8, "d0": 128, "d1": 136, "d2": 0, "d3": 0, "d4": 36, "d5": 0, "d6": 0, "d7": 0, "freq": 0.693147, "inter_arrival": 4.618532, "byte_dev": 0.298073}, {"can_id": 1072, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.098612, "inter_arrival": 4.101322, "byte_dev": 0.0}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 88, "d2": 0, "d3": 0, "d4": 0, "d5": 60, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.382606, "byte_dev": 0.149377}, {"can_id": 809, "dlc": 8, "d0": 134, "d1": 183, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 1.609438, "inter_arrival": 3.901367, "byte_dev": 0.135897}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 195, "d6": 8, "d7": 0, "freq": 2.484907, "inter_arrival": 2.393811, "byte_dev": 0.127981}, {"can_id": 608, "dlc": 8, "d0": 25, "d1": 35, "d2": 35, "d3": 48, "d4": 8, "d5": 142, "d6": 122, "d7": 59, "freq": 2.484907, "inter_arrival": 2.390432, "byte_dev": 0.719107}, {"can_id": 497, "dlc": 8, "d0": 8, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 1.791759, "inter_arrival": 3.716469, "byte_dev": 0.0}, {"can_id": 809, "dlc": 8, "d0": 134, "d1": 182, "d2": 127, "d3": 20, "d4": 17, "d5": 32, "d6": 0, "d7": 20, "freq": 2.397895, "inter_arrival": 2.406763, "byte_dev": 0.166017}, {"can_id": 1088, "dlc": 8, "d0": 255, "d1": 0, "d2": 0, "d3": 0, "d4": 255, "d5": 141, "d6": 9, "d7": 0, "freq": 0.693147, "inter_arrival": 5.397706, "byte_dev": 0.269688}, {"can_id": 1349, "dlc": 8, "d0": 216, "d1": 0, "d2": 0, "d3": 136, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.397895, "inter_arrival": 2.398176, "byte_dev": 0.086296}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 4.369448, "inter_arrival": 0.411305, "byte_dev": 0.0}, {"can_id": 399, "dlc": 8, "d0": 254, "d1": 86, "d2": 0, "d3": 0, "d4": 0, "d5": 65, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.395247, "byte_dev": 0.274782}, {"can_id": 339, "dlc": 8, "d0": 0, "d1": 33, "d2": 16, "d3": 255, "d4": 0, "d5": 255, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.351469, "byte_dev": 0.0}, {"can_id": 305, "dlc": 8, "d0": 247, "d1": 127, "d2": 0, "d3": 0, "d4": 46, "d5": 127, "d6": 8, "d7": 221, "freq": 2.484907, "inter_arrival": 2.483826, "byte_dev": 0.432608}, {"can_id": 672, "dlc": 8, "d0": 100, "d1": 0, "d2": 154, "d3": 29, "d4": 151, "d5": 2, "d6": 189, "d7": 0, "freq": 2.484907, "inter_arrival": 2.396072, "byte_dev": 0.191018}, {"can_id": 304, "dlc": 8, "d0": 24, "d1": 128, "d2": 0, "d3": 255, "d4": 36, "d5": 128, "d6": 9, "d7": 109, "freq": 2.484907, "inter_arrival": 2.302472, "byte_dev": 0.217381}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.397266, "byte_dev": 0.0}, {"can_id": 608, "dlc": 8, "d0": 25, "d1": 33, "d2": 33, "d3": 48, "d4": 8, "d5": 142, "d6": 109, "d7": 42, "freq": 2.484907, "inter_arrival": 2.383332, "byte_dev": 0.401938}, {"can_id": 672, "dlc": 8, "d0": 36, "d1": 0, "d2": 154, "d3": 29, "d4": 151, "d5": 2, "d6": 189, "d7": 0, "freq": 2.397895, "inter_arrival": 2.409102, "byte_dev": 0.093844}, {"can_id": 704, "dlc": 8, "d0": 20, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 2.484907, "inter_arrival": 2.396723, "byte_dev": 0.0}, {"can_id": 608, "dlc": 8, "d0": 27, "d1": 35, "d2": 35, "d3": 48, "d4": 8, "d5": 142, "d6": 108, "d7": 54, "freq": 1.386294, "inter_arrival": 3.704851, "byte_dev": 0.634881}, {"can_id": 0, "dlc": 8, "d0": 0, "d1": 0, "d2": 0, "d3": 0, "d4": 0, "d5": 0, "d6": 0, "d7": 0, "freq": 4.174387, "inter_arrival": 0.399383, "byte_dev": 0.0}];
+
+  function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+  function randFloat(min, max) { return Math.random() * (max - min) + min; }
+
+  function buildNormalSequence() {
+    return REAL_NORMAL;
+  }
+
+  function buildDosSequence() {
+    return REAL_DOS;
+  }
+
+  function buildSpoofSequence() {
+    // Synthetic — no real byte-spoofing examples exist in the loaded DoS-only dataset
+    const msgs = [];
+    for (let i = 0; i < 50; i++) {
+      msgs.push({
+        can_id: 413, dlc: 8,
+        d0: randInt(200, 255), d1: randInt(200, 255), d2: randInt(200, 255), d3: randInt(200, 255),
+        d4: randInt(200, 255), d5: randInt(200, 255), d6: randInt(200, 255), d7: randInt(200, 255),
+        freq: randFloat(2, 6), inter_arrival: randFloat(15, 40), byte_dev: randFloat(8, 14)
+      });
+    }
+    return msgs;
+  }
+
+  const scenarios = { normal: buildNormalSequence, dos: buildDosSequence, spoof: buildSpoofSequence };
+  let currentScenario = 'normal';
+  let currentMessages = scenarios[currentScenario]();
+
+  // ---------- Scenario chip handling ----------
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentScenario = chip.dataset.scenario;
+      currentMessages = scenarios[currentScenario]();
+      renderTable();
+      resetStatus();
+    });
+  });
+
+  // ---------- Table preview ----------
+  function renderTable() {
+    const body = document.getElementById('tableBody');
+    body.innerHTML = '';
+    currentMessages.forEach((m, i) => {
+      const row = document.createElement('tr');
+      const bytes = [m.d0,m.d1,m.d2,m.d3,m.d4,m.d5,m.d6,m.d7].map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+      row.innerHTML = `<td>${i}</td><td>${m.can_id}</td><td>${m.dlc}</td><td>${bytes}</td><td>${m.freq.toFixed(2)}</td><td>${m.byte_dev.toFixed(2)}</td>`;
+      body.appendChild(row);
+    });
+  }
+  renderTable();
+
+  document.getElementById('previewToggle').addEventListener('click', () => {
+    const el = document.getElementById('tableScroll');
+    const btn = document.getElementById('previewToggle');
+    const open = el.classList.toggle('open');
+    btn.textContent = open ? 'Hide 50 messages' : 'Show 50 messages';
+  });
+
+  // ---------- Status helpers ----------
+  function resetStatus() {
+    const light = document.getElementById('statusLight');
+    light.className = 'status-light idle';
+    document.getElementById('statusWord').className = 'status-word idle';
+    document.getElementById('statusWord').textContent = 'Awaiting input';
+    document.getElementById('statusSub').textContent = 'Load a sample and run detection.';
+    document.getElementById('errorBox').style.display = 'none';
+    ['recon','freq','bytedev'].forEach(k => {
+      document.getElementById(k+'Value').textContent = '—';
+      document.getElementById(k+'Flag').textContent = '—';
+      document.getElementById(k+'Flag').className = 'signal-flag';
+      document.getElementById(k+'Bar').style.width = '0%';
+      document.getElementById(k+'Bar').className = 'bar-fill';
+      document.getElementById(k+'Thresh').textContent = 'threshold —';
+    });
+  }
+
+  function setBar(key, value, threshold) {
+    const pct = Math.min(100, (value / (threshold * 1.6)) * 100);
+    const bar = document.getElementById(key + 'Bar');
+    bar.style.width = pct + '%';
+    bar.className = 'bar-fill' + (value > threshold ? ' exceeded' : '');
+  }
+
+  // ---------- Run detection ----------
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('runBtn');
+    const light = document.getElementById('statusLight');
+    const word = document.getElementById('statusWord');
+    const sub = document.getElementById('statusSub');
+    const errorBox = document.getElementById('errorBox');
+    const runMeta = document.getElementById('runMeta');
+    const footerStatus = document.getElementById('footerStatus');
+
+    btn.disabled = true;
+    errorBox.style.display = 'none';
+    light.className = 'status-light running';
+    word.className = 'status-word running';
+    word.textContent = 'Running';
+    sub.textContent = 'Sending 50-message window to the live model…';
+    runMeta.textContent = '';
+
+    const started = performance.now();
+
+    try {
+      const res = await fetch(API_BASE + '/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: currentMessages })
+      });
+
+      if (!res.ok) throw new Error('API responded with status ' + res.status);
+      const data = await res.json();
+      const elapsed = Math.round(performance.now() - started);
+
+      if (data.error) throw new Error(data.error);
+
+      const isAttack = data.is_attack;
+      light.className = 'status-light ' + (isAttack ? 'attack' : 'normal');
+      word.className = 'status-word ' + (isAttack ? 'attack' : 'normal');
+      word.textContent = isAttack ? 'Attack detected' : 'Normal';
+      sub.textContent = isAttack ? (data.attack_type || 'Anomalous pattern flagged') : 'Traffic matches learned normal behavior.';
+
+      document.getElementById('reconValue').textContent = data.reconstruction_error.toFixed(6);
+      document.getElementById('reconFlag').textContent = data.recon_alert ? 'alert' : 'clear';
+      document.getElementById('reconFlag').className = 'signal-flag ' + (data.recon_alert ? 'on' : 'off');
+      document.getElementById('reconThresh').textContent = 'threshold ' + data.thresholds.recon.toFixed(6);
+      setBar('recon', data.reconstruction_error, data.thresholds.recon);
+
+      document.getElementById('freqValue').textContent = data.last_freq_scaled.toFixed(4);
+      document.getElementById('freqFlag').textContent = data.freq_alert ? 'alert' : 'clear';
+      document.getElementById('freqFlag').className = 'signal-flag ' + (data.freq_alert ? 'on' : 'off');
+      document.getElementById('freqThresh').textContent = 'threshold ' + data.thresholds.freq.toFixed(4);
+      setBar('freq', Math.max(0,data.last_freq_scaled), data.thresholds.freq);
+
+      document.getElementById('bytedevValue').textContent = data.last_bytedev_scaled.toFixed(4);
+      document.getElementById('bytedevFlag').textContent = data.bytedev_alert ? 'alert' : 'clear';
+      document.getElementById('bytedevFlag').className = 'signal-flag ' + (data.bytedev_alert ? 'on' : 'off');
+      document.getElementById('bytedevThresh').textContent = 'threshold ' + data.thresholds.bytedev.toFixed(4);
+      setBar('bytedev', Math.max(0,data.last_bytedev_scaled), data.thresholds.bytedev);
+
+      runMeta.textContent = elapsed + 'ms';
+      footerStatus.textContent = 'Last response: ' + new Date().toLocaleTimeString();
+
+    } catch (err) {
+      light.className = 'status-light idle';
+      word.className = 'status-word idle';
+      word.textContent = 'Request failed';
+      sub.textContent = 'The live API could not be reached.';
+      errorBox.style.display = 'block';
+      errorBox.textContent = err.message + ' — the service may be paused, or CORS is not yet enabled on the API.';
+      footerStatus.textContent = 'Last request failed';
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ---------- Evaluate your own dataset ----------
+  const csvFileInput = document.getElementById('csvFile');
+  const fileLabel = document.querySelector('.file-label');
+  const fileLabelText = document.getElementById('fileLabelText');
+  const evalBtn = document.getElementById('evalBtn');
+  const evalMeta = document.getElementById('evalMeta');
+  const evalErrorBox = document.getElementById('evalErrorBox');
+  const evalResults = document.getElementById('evalResults');
+
+  csvFileInput.addEventListener('change', () => {
+    if (csvFileInput.files.length > 0) {
+      const f = csvFileInput.files[0];
+      fileLabelText.textContent = f.name + ' (' + Math.round(f.size / 1024) + ' KB)';
+      fileLabel.classList.add('has-file');
+      evalBtn.disabled = false;
+    } else {
+      fileLabelText.textContent = 'Choose CSV file';
+      fileLabel.classList.remove('has-file');
+      evalBtn.disabled = true;
+    }
+    evalResults.innerHTML = '';
+    evalErrorBox.style.display = 'none';
+  });
+
+  function renderStrategyRow(label, m) {
+    return `<tr>
+      <td>${label}</td>
+      <td>${m.precision}</td>
+      <td>${m.recall}</td>
+      <td>${m.f1}</td>
+      <td>${m.true_positives}</td>
+      <td>${m.false_positives}</td>
+      <td>${m.false_negatives}</td>
+    </tr>`;
+  }
+
+  evalBtn.addEventListener('click', async () => {
+    if (!csvFileInput.files.length) return;
+    const file = csvFileInput.files[0];
+
+    evalBtn.disabled = true;
+    evalErrorBox.style.display = 'none';
+    evalResults.innerHTML = '';
+    evalMeta.textContent = 'Uploading and evaluating…';
+
+    const started = performance.now();
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(API_BASE + '/evaluate', { method: 'POST', body: formData });
+      const data = await res.json();
+      const elapsed = Math.round(performance.now() - started);
+
+      if (data.error) {
+        evalErrorBox.style.display = 'block';
+        evalErrorBox.textContent = data.error;
+        evalMeta.textContent = '';
+        return;
+      }
+
+      evalMeta.textContent = elapsed + 'ms';
+
+      evalResults.innerHTML = `
+        <div class="eval-summary">
+          ${data.rows_in_file} rows in file · ${data.windows_evaluated} windows evaluated
+          (${data.normal_windows} normal, ${data.attack_windows} attack)
+        </div>
+        <table class="eval-table">
+          <thead>
+            <tr><th>Strategy</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th><th>FN</th></tr>
+          </thead>
+          <tbody>
+            ${renderStrategyRow('Reconstruction error', data.strategies.reconstruction_error)}
+            ${renderStrategyRow('Frequency', data.strategies.frequency)}
+            ${renderStrategyRow('Byte deviation', data.strategies.byte_deviation)}
+            ${renderStrategyRow('Combined', data.strategies.combined)}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      evalErrorBox.style.display = 'block';
+      evalErrorBox.textContent = err.message + ' — the live API could not be reached.';
+      evalMeta.textContent = '';
+    } finally {
+      evalBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>
