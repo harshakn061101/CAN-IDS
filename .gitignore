@@ -5,9 +5,11 @@ __pycache__/
 *.pkl
 *.npy
 data/
-src/scaler.pkl
-src/id_means.pkl
-src/id_stds.pkl
+!src/scaler.pkl
+!src/id_means.pkl
+!src/id_stds.pkl
+!src/lstm_autoencoder_best.pth
+!src/reference_data.csv
 src/error_distribution.png
 .env
 *.csv
@@ -18,3 +20,6 @@ health-check.json
 instance-config.json
 source-config.json
 trust-policy.json
+mlruns/
+src/mlflow_run_id.txt
+mlflow.db
